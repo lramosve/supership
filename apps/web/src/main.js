@@ -1,8 +1,53 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { createDocumentInputSchema, documentMetaResponseSchema, documentSchema, documentListResponseSchema, documentTypeSchema, seededDocuments, } from '@supership/shared';
+import { createDocumentInputSchema, documentMetaResponseSchema, documentSchema, documentListResponseSchema, documentStatusSchema, documentTypeSchema, seededDocuments, updateDocumentInputSchema, } from '@supership/shared';
 const apiBaseUrl = globalThis.__SUPERSHIP_API_BASE_URL__ ?? 'http://localhost:3000';
+const defaultEditorDraft = {
+    type: 'wiki',
+    title: '',
+    summary: '',
+    content: '',
+    status: 'draft',
+    ownerId: 'person-web-shell',
+    tags: 'seed, web',
+};
+function toEditorDraft(document) {
+    if (!document) {
+        return defaultEditorDraft;
+    }
+    return {
+        type: document.type,
+        title: document.title,
+        summary: document.summary,
+        content: document.content,
+        status: document.status,
+        ownerId: document.ownerId,
+        tags: document.tags.join(', '),
+    };
+}
+function draftToCreatePayload(draft) {
+    return createDocumentInputSchema.parse({
+        type: draft.type,
+        title: draft.title.trim(),
+        summary: draft.summary.trim(),
+        content: draft.content,
+        status: draft.status,
+        ownerId: draft.ownerId.trim(),
+        tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+    });
+}
+function draftToUpdatePayload(draft) {
+    return updateDocumentInputSchema.parse({
+        type: draft.type,
+        title: draft.title.trim(),
+        summary: draft.summary.trim(),
+        content: draft.content,
+        status: draft.status,
+        ownerId: draft.ownerId.trim(),
+        tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+    });
+}
 async function fetchJson(path, init, schema) {
     const response = await fetch(`${apiBaseUrl}${path}`, {
         headers: {
@@ -29,15 +74,72 @@ function createSeedPayload(existingDocuments) {
         tags: ['seed', 'web'],
     });
 }
+function createLocalDocument(payload, existingDocuments) {
+    const timestamp = new Date().toISOString();
+    return documentSchema.parse({
+        id: `local-${existingDocuments.length + 1}`,
+        ...payload,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+    });
+}
+function updateLocalDocument(existing, payload) {
+    return documentSchema.parse({
+        ...existing,
+        ...payload,
+        updatedAt: new Date().toISOString(),
+    });
+}
+function MetricCard({ label, value }) {
+    return (_jsxs("div", { style: { padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220, background: '#ffffff' }, children: [_jsx("strong", { children: value }), _jsx("div", { children: label })] }));
+}
+function NavigationTab({ label, active, onClick }) {
+    return (_jsx("button", { onClick: onClick, style: {
+            padding: '10px 14px',
+            borderRadius: 10,
+            border: active ? '1px solid #111827' : '1px solid #d1d5db',
+            background: active ? '#111827' : '#ffffff',
+            color: active ? '#ffffff' : '#111827',
+            cursor: 'pointer',
+        }, children: label }));
+}
+function DashboardView({ documents, state, onOpenDocuments, onOpenCreate }) {
+    const byType = documents.reduce((accumulator, document) => {
+        accumulator[document.type] = (accumulator[document.type] ?? 0) + 1;
+        return accumulator;
+    }, {});
+    const activeCount = documents.filter((document) => document.status === 'active').length;
+    const draftCount = documents.filter((document) => document.status === 'draft').length;
+    return (_jsxs("section", { children: [_jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx(MetricCard, { label: "documents visible", value: documents.length }), _jsx(MetricCard, { label: "active documents", value: activeCount }), _jsx(MetricCard, { label: "draft documents", value: draftCount }), _jsx(MetricCard, { label: "workspace state", value: state })] }), _jsxs("section", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }, children: [_jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Portfolio mix" }), _jsx("ul", { style: { margin: 0, paddingLeft: 18 }, children: Object.entries(byType).map(([type, count]) => (_jsxs("li", { children: [type, ": ", count] }, type))) })] }), _jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Focused actions" }), _jsx("p", { children: "The core frontend now supports a routed shell, filtered document explorer, and document editor." }), _jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap' }, children: [_jsx("button", { onClick: onOpenDocuments, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: "Explore documents" }), _jsx("button", { onClick: onOpenCreate, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#ffffff', color: '#111827' }, children: "Draft a document" })] })] })] })] }));
+}
+function DocumentsView({ filteredDocuments, selectedDocument, selectedType, searchTerm, meta, onSearch, onSelectType, onSelectDocument, onEdit, }) {
+    return (_jsxs("section", { children: [_jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx("input", { "aria-label": "Search documents", value: searchTerm, onChange: (event) => onSearch(event.target.value), placeholder: "Search by title, summary, or tag", style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db', minWidth: 280 } }), _jsxs("select", { "aria-label": "Filter by document type", value: selectedType, onChange: (event) => onSelectType(event.target.value), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db', minWidth: 220 }, children: [_jsx("option", { value: "all", children: "All document types" }), meta.documentTypes.map((type) => (_jsx("option", { value: type, children: type }, type)))] })] }), _jsxs("section", { style: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }, children: [_jsxs("aside", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Document list" }), _jsxs("p", { style: { color: '#6b7280' }, children: [filteredDocuments.length, " matching documents"] }), _jsx("ul", { style: { listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }, children: filteredDocuments.map((document) => (_jsx("li", { children: _jsxs("button", { onClick: () => onSelectDocument(document.id), style: {
+                                            width: '100%',
+                                            textAlign: 'left',
+                                            borderRadius: 12,
+                                            border: document.id === selectedDocument?.id ? '2px solid #2563eb' : '1px solid #d1d5db',
+                                            background: '#ffffff',
+                                            padding: 12,
+                                            cursor: 'pointer',
+                                        }, children: [_jsx("div", { style: { fontSize: 12, textTransform: 'uppercase', color: '#6b7280' }, children: document.type }), _jsx("strong", { children: document.title }), _jsx("div", { style: { marginTop: 6, color: '#4b5563' }, children: document.summary })] }) }, document.id))) })] }), _jsx("section", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: selectedDocument ? (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }, children: [_jsx("span", { style: { padding: '4px 8px', borderRadius: 999, background: '#dbeafe', color: '#1d4ed8' }, children: selectedDocument.type }), _jsx("span", { style: { padding: '4px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }, children: selectedDocument.status }), _jsx("span", { style: { padding: '4px 8px', borderRadius: 999, background: '#f3f4f6', color: '#374151' }, children: selectedDocument.ownerId })] }), _jsx("h2", { style: { marginTop: 0 }, children: selectedDocument.title }), _jsx("p", { children: selectedDocument.summary }), _jsx("article", { style: { whiteSpace: 'pre-wrap', lineHeight: 1.5 }, children: selectedDocument.content }), _jsxs("div", { style: { marginTop: 16 }, children: [_jsx("strong", { children: "Tags:" }), " ", selectedDocument.tags.join(', ') || 'none'] }), _jsx("div", { style: { marginTop: 16 }, children: _jsx("button", { onClick: onEdit, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: "Edit selected document" }) })] })) : (_jsx("p", { children: "No document selected." })) })] })] }));
+}
+function EditorView({ draft, mode, meta, activeDocument, onChange, onSave, }) {
+    return (_jsxs("section", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: mode === 'create' ? 'Create document' : `Edit ${activeDocument?.title ?? 'document'}` }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }, children: [_jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Title" }), _jsx("input", { "aria-label": "Document title", value: draft.title, onChange: (event) => onChange({ title: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Owner" }), _jsx("input", { "aria-label": "Document owner", value: draft.ownerId, onChange: (event) => onChange({ ownerId: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Type" }), _jsx("select", { "aria-label": "Document type", value: draft.type, onChange: (event) => onChange({ type: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }, children: meta.documentTypes.map((type) => (_jsx("option", { value: type, children: type }, type))) })] }), _jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Status" }), _jsx("select", { "aria-label": "Document status", value: draft.status, onChange: (event) => onChange({ status: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }, children: meta.documentStatuses.map((status) => (_jsx("option", { value: status, children: status }, status))) })] })] }), _jsxs("label", { style: { display: 'grid', gap: 6, marginBottom: 16 }, children: [_jsx("span", { children: "Summary" }), _jsx("input", { "aria-label": "Document summary", value: draft.summary, onChange: (event) => onChange({ summary: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6, marginBottom: 16 }, children: [_jsx("span", { children: "Tags" }), _jsx("input", { "aria-label": "Document tags", value: draft.tags, onChange: (event) => onChange({ tags: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6, marginBottom: 16 }, children: [_jsx("span", { children: "Content" }), _jsx("textarea", { "aria-label": "Document content", value: draft.content, onChange: (event) => onChange({ content: event.target.value }), rows: 10, style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db', resize: 'vertical' } })] }), _jsx("button", { onClick: onSave, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: mode === 'create' ? 'Save new document' : 'Save document changes' })] }));
+}
 export function DocumentApp() {
     const [documents, setDocuments] = useState(seededDocuments);
     const [meta, setMeta] = useState({
         documentTypes: [...documentTypeSchema.options],
-        documentStatuses: ['draft', 'active', 'archived'],
+        documentStatuses: [...documentStatusSchema.options],
     });
     const [selectedDocumentId, setSelectedDocumentId] = useState(seededDocuments[0]?.id ?? '');
     const [state, setState] = useState('idle');
     const [message, setMessage] = useState('Loading document workspace...');
+    const [view, setView] = useState('dashboard');
+    const [selectedType, setSelectedType] = useState('all');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [editorMode, setEditorMode] = useState('create');
+    const [draft, setDraft] = useState(defaultEditorDraft);
     useEffect(() => {
         async function load() {
             setState('loading');
@@ -59,7 +161,31 @@ export function DocumentApp() {
         }
         void load();
     }, []);
-    const selectedDocument = useMemo(() => documents.find((document) => document.id === selectedDocumentId) ?? documents[0], [documents, selectedDocumentId]);
+    const filteredDocuments = useMemo(() => {
+        const normalizedSearch = searchTerm.trim().toLowerCase();
+        return documents.filter((document) => {
+            const matchesType = selectedType === 'all' || document.type === selectedType;
+            const haystack = `${document.title} ${document.summary} ${document.tags.join(' ')}`.toLowerCase();
+            const matchesSearch = normalizedSearch.length === 0 || haystack.includes(normalizedSearch);
+            return matchesType && matchesSearch;
+        });
+    }, [documents, searchTerm, selectedType]);
+    const selectedDocument = useMemo(() => documents.find((document) => document.id === selectedDocumentId) ?? filteredDocuments[0] ?? documents[0], [documents, filteredDocuments, selectedDocumentId]);
+    useEffect(() => {
+        if (selectedDocument && selectedDocument.id !== selectedDocumentId) {
+            setSelectedDocumentId(selectedDocument.id);
+        }
+    }, [selectedDocument, selectedDocumentId]);
+    function openCreateEditor() {
+        setEditorMode('create');
+        setDraft(defaultEditorDraft);
+        setView('editor');
+    }
+    function openEditEditor() {
+        setEditorMode('edit');
+        setDraft(toEditorDraft(selectedDocument));
+        setView('editor');
+    }
     async function handleCreateSeedDocument() {
         const payload = createSeedPayload(documents);
         try {
@@ -71,30 +197,64 @@ export function DocumentApp() {
             setSelectedDocumentId(created.id);
             setState('ready');
             setMessage(`Created ${created.type} document “${created.title}”.`);
+            setView('documents');
         }
         catch {
-            const timestamp = new Date().toISOString();
-            const fallback = documentSchema.parse({
-                id: `local-${documents.length + 1}`,
-                ...payload,
-                createdAt: timestamp,
-                updatedAt: timestamp,
-            });
+            const fallback = createLocalDocument(payload, documents);
             setDocuments((current) => [fallback, ...current]);
             setSelectedDocumentId(fallback.id);
             setState('error');
             setMessage(`API unavailable. Added local fallback document “${fallback.title}”.`);
+            setView('documents');
         }
     }
-    return (_jsxs("main", { style: { fontFamily: 'Inter, sans-serif', padding: 24, color: '#111827' }, children: [_jsxs("header", { style: { marginBottom: 24 }, children: [_jsx("h1", { style: { marginBottom: 8 }, children: "SuperShip document workspace" }), _jsx("p", { style: { margin: 0 }, children: "Everything is a document. This shell surfaces the first unified document list and detail view." })] }), _jsxs("section", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsxs("div", { style: { padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220 }, children: [_jsx("strong", { children: documents.length }), _jsx("div", { children: "documents visible" })] }), _jsxs("div", { style: { padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220 }, children: [_jsx("strong", { children: meta.documentTypes.length }), _jsx("div", { children: "document types modeled" })] }), _jsxs("div", { style: { padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220 }, children: [_jsx("strong", { children: state }), _jsx("div", { children: "workspace state" })] })] }), _jsxs("section", { style: { marginBottom: 16 }, children: [_jsx("button", { onClick: () => void handleCreateSeedDocument(), style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: "Create seed document" }), _jsx("p", { style: { marginTop: 12 }, children: message })] }), _jsxs("section", { style: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }, children: [_jsxs("aside", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16 }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Document list" }), _jsx("ul", { style: { listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }, children: documents.map((document) => (_jsx("li", { children: _jsxs("button", { onClick: () => setSelectedDocumentId(document.id), style: {
-                                            width: '100%',
-                                            textAlign: 'left',
-                                            borderRadius: 12,
-                                            border: document.id === selectedDocument?.id ? '2px solid #2563eb' : '1px solid #d1d5db',
-                                            background: '#ffffff',
-                                            padding: 12,
-                                            cursor: 'pointer',
-                                        }, children: [_jsx("div", { style: { fontSize: 12, textTransform: 'uppercase', color: '#6b7280' }, children: document.type }), _jsx("strong", { children: document.title }), _jsx("div", { style: { marginTop: 6, color: '#4b5563' }, children: document.summary })] }) }, document.id))) })] }), _jsx("section", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16 }, children: selectedDocument ? (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }, children: [_jsx("span", { style: { padding: '4px 8px', borderRadius: 999, background: '#dbeafe', color: '#1d4ed8' }, children: selectedDocument.type }), _jsx("span", { style: { padding: '4px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }, children: selectedDocument.status }), _jsx("span", { style: { padding: '4px 8px', borderRadius: 999, background: '#f3f4f6', color: '#374151' }, children: selectedDocument.ownerId })] }), _jsx("h2", { style: { marginTop: 0 }, children: selectedDocument.title }), _jsx("p", { children: selectedDocument.summary }), _jsx("article", { style: { whiteSpace: 'pre-wrap', lineHeight: 1.5 }, children: selectedDocument.content }), _jsxs("div", { style: { marginTop: 16 }, children: [_jsx("strong", { children: "Tags:" }), " ", selectedDocument.tags.join(', ') || 'none'] })] })) : (_jsx("p", { children: "No document selected." })) })] })] }));
+    async function handleSaveDraft() {
+        if (editorMode === 'create') {
+            const payload = draftToCreatePayload(draft);
+            try {
+                const created = await fetchJson('/api/documents', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                }, documentSchema);
+                setDocuments((current) => [created, ...current]);
+                setSelectedDocumentId(created.id);
+                setState('ready');
+                setMessage(`Saved new ${created.type} document “${created.title}”.`);
+            }
+            catch {
+                const fallback = createLocalDocument(payload, documents);
+                setDocuments((current) => [fallback, ...current]);
+                setSelectedDocumentId(fallback.id);
+                setState('error');
+                setMessage(`API unavailable. Added local draft document “${fallback.title}”.`);
+            }
+            setView('documents');
+            return;
+        }
+        if (!selectedDocument) {
+            return;
+        }
+        const payload = draftToUpdatePayload(draft);
+        try {
+            const updated = await fetchJson(`/api/documents/${selectedDocument.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify(payload),
+            }, documentSchema);
+            setDocuments((current) => current.map((document) => document.id === updated.id ? updated : document));
+            setSelectedDocumentId(updated.id);
+            setState('ready');
+            setMessage(`Updated document “${updated.title}”.`);
+        }
+        catch {
+            const fallback = updateLocalDocument(selectedDocument, payload);
+            setDocuments((current) => current.map((document) => document.id === fallback.id ? fallback : document));
+            setSelectedDocumentId(fallback.id);
+            setState('error');
+            setMessage(`API unavailable. Saved local edits for “${fallback.title}”.`);
+        }
+        setView('documents');
+    }
+    return (_jsxs("main", { style: { fontFamily: 'Inter, sans-serif', padding: 24, color: '#111827', background: '#f9fafb', minHeight: '100vh' }, children: [_jsxs("header", { style: { marginBottom: 24 }, children: [_jsx("h1", { style: { marginBottom: 8 }, children: "SuperShip core frontend" }), _jsx("p", { style: { margin: 0 }, children: "Phase 4 expands the document workspace into a routed shell with dashboard, explorer, and editor experiences." })] }), _jsxs("nav", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx(NavigationTab, { label: "Dashboard", active: view === 'dashboard', onClick: () => setView('dashboard') }), _jsx(NavigationTab, { label: "Documents", active: view === 'documents', onClick: () => setView('documents') }), _jsx(NavigationTab, { label: "Editor", active: view === 'editor', onClick: () => setView('editor') }), _jsx("button", { onClick: () => void handleCreateSeedDocument(), style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff', marginLeft: 'auto' }, children: "Create seed document" })] }), _jsx("section", { style: { marginBottom: 16 }, children: _jsx("p", { children: message }) }), view === 'dashboard' ? (_jsx(DashboardView, { documents: documents, state: state, onOpenDocuments: () => setView('documents'), onOpenCreate: openCreateEditor })) : null, view === 'documents' ? (_jsx(DocumentsView, { filteredDocuments: filteredDocuments, selectedDocument: selectedDocument, selectedType: selectedType, searchTerm: searchTerm, meta: meta, onSearch: setSearchTerm, onSelectType: setSelectedType, onSelectDocument: setSelectedDocumentId, onEdit: openEditEditor })) : null, view === 'editor' ? (_jsx(EditorView, { draft: draft, mode: editorMode, meta: meta, activeDocument: selectedDocument, onChange: (patch) => setDraft((current) => ({ ...current, ...patch })), onSave: () => void handleSaveDraft() })) : null] }));
 }
 if (typeof document !== 'undefined') {
     const rootElement = document.getElementById('root');

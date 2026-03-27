@@ -5,16 +5,83 @@ import {
   documentMetaResponseSchema,
   documentSchema,
   documentListResponseSchema,
+  documentStatusSchema,
   documentTypeSchema,
   seededDocuments,
+  updateDocumentInputSchema,
   type CreateDocumentInput,
   type Document,
   type DocumentMetaResponse,
+  type DocumentStatus,
+  type DocumentType,
+  type UpdateDocumentInput,
 } from '@supership/shared';
 
 type AsyncState = 'idle' | 'loading' | 'ready' | 'error';
+type AppView = 'dashboard' | 'documents' | 'editor';
+type EditorMode = 'create' | 'edit';
+
+type EditorDraft = {
+  type: DocumentType;
+  title: string;
+  summary: string;
+  content: string;
+  status: DocumentStatus;
+  ownerId: string;
+  tags: string;
+};
 
 const apiBaseUrl = (globalThis as { __SUPERSHIP_API_BASE_URL__?: string }).__SUPERSHIP_API_BASE_URL__ ?? 'http://localhost:3000';
+
+const defaultEditorDraft: EditorDraft = {
+  type: 'wiki',
+  title: '',
+  summary: '',
+  content: '',
+  status: 'draft',
+  ownerId: 'person-web-shell',
+  tags: 'seed, web',
+};
+
+function toEditorDraft(document?: Document): EditorDraft {
+  if (!document) {
+    return defaultEditorDraft;
+  }
+
+  return {
+    type: document.type,
+    title: document.title,
+    summary: document.summary,
+    content: document.content,
+    status: document.status,
+    ownerId: document.ownerId,
+    tags: document.tags.join(', '),
+  };
+}
+
+function draftToCreatePayload(draft: EditorDraft): CreateDocumentInput {
+  return createDocumentInputSchema.parse({
+    type: draft.type,
+    title: draft.title.trim(),
+    summary: draft.summary.trim(),
+    content: draft.content,
+    status: draft.status,
+    ownerId: draft.ownerId.trim(),
+    tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+  });
+}
+
+function draftToUpdatePayload(draft: EditorDraft): UpdateDocumentInput {
+  return updateDocumentInputSchema.parse({
+    type: draft.type,
+    title: draft.title.trim(),
+    summary: draft.summary.trim(),
+    content: draft.content,
+    status: draft.status,
+    ownerId: draft.ownerId.trim(),
+    tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+  });
+}
 
 async function fetchJson<T>(path: string, init?: RequestInit, schema?: { parse: (value: unknown) => T }): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -46,15 +113,283 @@ function createSeedPayload(existingDocuments: Document[]): CreateDocumentInput {
   });
 }
 
+function createLocalDocument(payload: CreateDocumentInput, existingDocuments: Document[]): Document {
+  const timestamp = new Date().toISOString();
+  return documentSchema.parse({
+    id: `local-${existingDocuments.length + 1}`,
+    ...payload,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+}
+
+function updateLocalDocument(existing: Document, payload: UpdateDocumentInput): Document {
+  return documentSchema.parse({
+    ...existing,
+    ...payload,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function MetricCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div style={{ padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220, background: '#ffffff' }}>
+      <strong>{value}</strong>
+      <div>{label}</div>
+    </div>
+  );
+}
+
+function NavigationTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '10px 14px',
+        borderRadius: 10,
+        border: active ? '1px solid #111827' : '1px solid #d1d5db',
+        background: active ? '#111827' : '#ffffff',
+        color: active ? '#ffffff' : '#111827',
+        cursor: 'pointer',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function DashboardView({ documents, state, onOpenDocuments, onOpenCreate }: {
+  documents: Document[];
+  state: AsyncState;
+  onOpenDocuments: () => void;
+  onOpenCreate: () => void;
+}) {
+  const byType = documents.reduce<Record<string, number>>((accumulator, document) => {
+    accumulator[document.type] = (accumulator[document.type] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  const activeCount = documents.filter((document) => document.status === 'active').length;
+  const draftCount = documents.filter((document) => document.status === 'draft').length;
+
+  return (
+    <section>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <MetricCard label="documents visible" value={documents.length} />
+        <MetricCard label="active documents" value={activeCount} />
+        <MetricCard label="draft documents" value={draftCount} />
+        <MetricCard label="workspace state" value={state} />
+      </div>
+
+      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+          <h2 style={{ marginTop: 0 }}>Portfolio mix</h2>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {Object.entries(byType).map(([type, count]) => (
+              <li key={type}>{type}: {count}</li>
+            ))}
+          </ul>
+        </div>
+
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+          <h2 style={{ marginTop: 0 }}>Focused actions</h2>
+          <p>The core frontend now supports a routed shell, filtered document explorer, and document editor.</p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={onOpenDocuments} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }}>
+              Explore documents
+            </button>
+            <button onClick={onOpenCreate} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#ffffff', color: '#111827' }}>
+              Draft a document
+            </button>
+          </div>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function DocumentsView({
+  filteredDocuments,
+  selectedDocument,
+  selectedType,
+  searchTerm,
+  meta,
+  onSearch,
+  onSelectType,
+  onSelectDocument,
+  onEdit,
+}: {
+  filteredDocuments: Document[];
+  selectedDocument?: Document;
+  selectedType: 'all' | DocumentType;
+  searchTerm: string;
+  meta: DocumentMetaResponse;
+  onSearch: (value: string) => void;
+  onSelectType: (value: 'all' | DocumentType) => void;
+  onSelectDocument: (documentId: string) => void;
+  onEdit: () => void;
+}) {
+  return (
+    <section>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <input
+          aria-label="Search documents"
+          value={searchTerm}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="Search by title, summary, or tag"
+          style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db', minWidth: 280 }}
+        />
+        <select
+          aria-label="Filter by document type"
+          value={selectedType}
+          onChange={(event) => onSelectType(event.target.value as 'all' | DocumentType)}
+          style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db', minWidth: 220 }}
+        >
+          <option value="all">All document types</option>
+          {meta.documentTypes.map((type) => (
+            <option key={type} value={type}>{type}</option>
+          ))}
+        </select>
+      </div>
+
+      <section style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }}>
+        <aside style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+          <h2 style={{ marginTop: 0 }}>Document list</h2>
+          <p style={{ color: '#6b7280' }}>{filteredDocuments.length} matching documents</p>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }}>
+            {filteredDocuments.map((document) => (
+              <li key={document.id}>
+                <button
+                  onClick={() => onSelectDocument(document.id)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    borderRadius: 12,
+                    border: document.id === selectedDocument?.id ? '2px solid #2563eb' : '1px solid #d1d5db',
+                    background: '#ffffff',
+                    padding: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 12, textTransform: 'uppercase', color: '#6b7280' }}>{document.type}</div>
+                  <strong>{document.title}</strong>
+                  <div style={{ marginTop: 6, color: '#4b5563' }}>{document.summary}</div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+
+        <section style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+          {selectedDocument ? (
+            <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                <span style={{ padding: '4px 8px', borderRadius: 999, background: '#dbeafe', color: '#1d4ed8' }}>{selectedDocument.type}</span>
+                <span style={{ padding: '4px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>{selectedDocument.status}</span>
+                <span style={{ padding: '4px 8px', borderRadius: 999, background: '#f3f4f6', color: '#374151' }}>{selectedDocument.ownerId}</span>
+              </div>
+              <h2 style={{ marginTop: 0 }}>{selectedDocument.title}</h2>
+              <p>{selectedDocument.summary}</p>
+              <article style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{selectedDocument.content}</article>
+              <div style={{ marginTop: 16 }}>
+                <strong>Tags:</strong> {selectedDocument.tags.join(', ') || 'none'}
+              </div>
+              <div style={{ marginTop: 16 }}>
+                <button onClick={onEdit} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }}>
+                  Edit selected document
+                </button>
+              </div>
+            </>
+          ) : (
+            <p>No document selected.</p>
+          )}
+        </section>
+      </section>
+    </section>
+  );
+}
+
+function EditorView({
+  draft,
+  mode,
+  meta,
+  activeDocument,
+  onChange,
+  onSave,
+}: {
+  draft: EditorDraft;
+  mode: EditorMode;
+  meta: DocumentMetaResponse;
+  activeDocument?: Document;
+  onChange: (patch: Partial<EditorDraft>) => void;
+  onSave: () => void;
+}) {
+  return (
+    <section style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+      <h2 style={{ marginTop: 0 }}>{mode === 'create' ? 'Create document' : `Edit ${activeDocument?.title ?? 'document'}`}</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span>Title</span>
+          <input aria-label="Document title" value={draft.title} onChange={(event) => onChange({ title: event.target.value })} style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }} />
+        </label>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span>Owner</span>
+          <input aria-label="Document owner" value={draft.ownerId} onChange={(event) => onChange({ ownerId: event.target.value })} style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }} />
+        </label>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span>Type</span>
+          <select aria-label="Document type" value={draft.type} onChange={(event) => onChange({ type: event.target.value as DocumentType })} style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }}>
+            {meta.documentTypes.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span>Status</span>
+          <select aria-label="Document status" value={draft.status} onChange={(event) => onChange({ status: event.target.value as DocumentStatus })} style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }}>
+            {meta.documentStatuses.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label style={{ display: 'grid', gap: 6, marginBottom: 16 }}>
+        <span>Summary</span>
+        <input aria-label="Document summary" value={draft.summary} onChange={(event) => onChange({ summary: event.target.value })} style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }} />
+      </label>
+
+      <label style={{ display: 'grid', gap: 6, marginBottom: 16 }}>
+        <span>Tags</span>
+        <input aria-label="Document tags" value={draft.tags} onChange={(event) => onChange({ tags: event.target.value })} style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }} />
+      </label>
+
+      <label style={{ display: 'grid', gap: 6, marginBottom: 16 }}>
+        <span>Content</span>
+        <textarea aria-label="Document content" value={draft.content} onChange={(event) => onChange({ content: event.target.value })} rows={10} style={{ padding: 10, borderRadius: 10, border: '1px solid #d1d5db', resize: 'vertical' }} />
+      </label>
+
+      <button onClick={onSave} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }}>
+        {mode === 'create' ? 'Save new document' : 'Save document changes'}
+      </button>
+    </section>
+  );
+}
+
 export function DocumentApp() {
   const [documents, setDocuments] = useState<Document[]>(seededDocuments);
   const [meta, setMeta] = useState<DocumentMetaResponse>({
     documentTypes: [...documentTypeSchema.options],
-    documentStatuses: ['draft', 'active', 'archived'],
+    documentStatuses: [...documentStatusSchema.options],
   });
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>(seededDocuments[0]?.id ?? '');
   const [state, setState] = useState<AsyncState>('idle');
   const [message, setMessage] = useState<string>('Loading document workspace...');
+  const [view, setView] = useState<AppView>('dashboard');
+  const [selectedType, setSelectedType] = useState<'all' | DocumentType>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editorMode, setEditorMode] = useState<EditorMode>('create');
+  const [draft, setDraft] = useState<EditorDraft>(defaultEditorDraft);
 
   useEffect(() => {
     async function load() {
@@ -79,10 +414,38 @@ export function DocumentApp() {
     void load();
   }, []);
 
+  const filteredDocuments = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    return documents.filter((document) => {
+      const matchesType = selectedType === 'all' || document.type === selectedType;
+      const haystack = `${document.title} ${document.summary} ${document.tags.join(' ')}`.toLowerCase();
+      const matchesSearch = normalizedSearch.length === 0 || haystack.includes(normalizedSearch);
+      return matchesType && matchesSearch;
+    });
+  }, [documents, searchTerm, selectedType]);
+
   const selectedDocument = useMemo(
-    () => documents.find((document) => document.id === selectedDocumentId) ?? documents[0],
-    [documents, selectedDocumentId],
+    () => documents.find((document) => document.id === selectedDocumentId) ?? filteredDocuments[0] ?? documents[0],
+    [documents, filteredDocuments, selectedDocumentId],
   );
+
+  useEffect(() => {
+    if (selectedDocument && selectedDocument.id !== selectedDocumentId) {
+      setSelectedDocumentId(selectedDocument.id);
+    }
+  }, [selectedDocument, selectedDocumentId]);
+
+  function openCreateEditor() {
+    setEditorMode('create');
+    setDraft(defaultEditorDraft);
+    setView('editor');
+  }
+
+  function openEditEditor() {
+    setEditorMode('edit');
+    setDraft(toEditorDraft(selectedDocument));
+    setView('editor');
+  }
 
   async function handleCreateSeedDocument() {
     const payload = createSeedPayload(documents);
@@ -97,98 +460,123 @@ export function DocumentApp() {
       setSelectedDocumentId(created.id);
       setState('ready');
       setMessage(`Created ${created.type} document “${created.title}”.`);
+      setView('documents');
     } catch {
-      const timestamp = new Date().toISOString();
-      const fallback = documentSchema.parse({
-        id: `local-${documents.length + 1}`,
-        ...payload,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      });
-
+      const fallback = createLocalDocument(payload, documents);
       setDocuments((current) => [fallback, ...current]);
       setSelectedDocumentId(fallback.id);
       setState('error');
       setMessage(`API unavailable. Added local fallback document “${fallback.title}”.`);
+      setView('documents');
     }
   }
 
+  async function handleSaveDraft() {
+    if (editorMode === 'create') {
+      const payload = draftToCreatePayload(draft);
+
+      try {
+        const created = await fetchJson('/api/documents', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }, documentSchema);
+
+        setDocuments((current) => [created, ...current]);
+        setSelectedDocumentId(created.id);
+        setState('ready');
+        setMessage(`Saved new ${created.type} document “${created.title}”.`);
+      } catch {
+        const fallback = createLocalDocument(payload, documents);
+        setDocuments((current) => [fallback, ...current]);
+        setSelectedDocumentId(fallback.id);
+        setState('error');
+        setMessage(`API unavailable. Added local draft document “${fallback.title}”.`);
+      }
+
+      setView('documents');
+      return;
+    }
+
+    if (!selectedDocument) {
+      return;
+    }
+
+    const payload = draftToUpdatePayload(draft);
+
+    try {
+      const updated = await fetchJson(`/api/documents/${selectedDocument.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }, documentSchema);
+
+      setDocuments((current) => current.map((document) => document.id === updated.id ? updated : document));
+      setSelectedDocumentId(updated.id);
+      setState('ready');
+      setMessage(`Updated document “${updated.title}”.`);
+    } catch {
+      const fallback = updateLocalDocument(selectedDocument, payload);
+      setDocuments((current) => current.map((document) => document.id === fallback.id ? fallback : document));
+      setSelectedDocumentId(fallback.id);
+      setState('error');
+      setMessage(`API unavailable. Saved local edits for “${fallback.title}”.`);
+    }
+
+    setView('documents');
+  }
+
   return (
-    <main style={{ fontFamily: 'Inter, sans-serif', padding: 24, color: '#111827' }}>
+    <main style={{ fontFamily: 'Inter, sans-serif', padding: 24, color: '#111827', background: '#f9fafb', minHeight: '100vh' }}>
       <header style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 8 }}>SuperShip document workspace</h1>
-        <p style={{ margin: 0 }}>Everything is a document. This shell surfaces the first unified document list and detail view.</p>
+        <h1 style={{ marginBottom: 8 }}>SuperShip core frontend</h1>
+        <p style={{ margin: 0 }}>Phase 4 expands the document workspace into a routed shell with dashboard, explorer, and editor experiences.</p>
       </header>
 
-      <section style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-        <div style={{ padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220 }}>
-          <strong>{documents.length}</strong>
-          <div>documents visible</div>
-        </div>
-        <div style={{ padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220 }}>
-          <strong>{meta.documentTypes.length}</strong>
-          <div>document types modeled</div>
-        </div>
-        <div style={{ padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220 }}>
-          <strong>{state}</strong>
-          <div>workspace state</div>
-        </div>
-      </section>
-
-      <section style={{ marginBottom: 16 }}>
-        <button onClick={() => void handleCreateSeedDocument()} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }}>
+      <nav style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <NavigationTab label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
+        <NavigationTab label="Documents" active={view === 'documents'} onClick={() => setView('documents')} />
+        <NavigationTab label="Editor" active={view === 'editor'} onClick={() => setView('editor')} />
+        <button onClick={() => void handleCreateSeedDocument()} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff', marginLeft: 'auto' }}>
           Create seed document
         </button>
-        <p style={{ marginTop: 12 }}>{message}</p>
+      </nav>
+
+      <section style={{ marginBottom: 16 }}>
+        <p>{message}</p>
       </section>
 
-      <section style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }}>
-        <aside style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Document list</h2>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }}>
-            {documents.map((document) => (
-              <li key={document.id}>
-                <button
-                  onClick={() => setSelectedDocumentId(document.id)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    borderRadius: 12,
-                    border: document.id === selectedDocument?.id ? '2px solid #2563eb' : '1px solid #d1d5db',
-                    background: '#ffffff',
-                    padding: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontSize: 12, textTransform: 'uppercase', color: '#6b7280' }}>{document.type}</div>
-                  <strong>{document.title}</strong>
-                  <div style={{ marginTop: 6, color: '#4b5563' }}>{document.summary}</div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </aside>
+      {view === 'dashboard' ? (
+        <DashboardView
+          documents={documents}
+          state={state}
+          onOpenDocuments={() => setView('documents')}
+          onOpenCreate={openCreateEditor}
+        />
+      ) : null}
 
-        <section style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16 }}>
-          {selectedDocument ? (
-            <>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                <span style={{ padding: '4px 8px', borderRadius: 999, background: '#dbeafe', color: '#1d4ed8' }}>{selectedDocument.type}</span>
-                <span style={{ padding: '4px 8px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>{selectedDocument.status}</span>
-                <span style={{ padding: '4px 8px', borderRadius: 999, background: '#f3f4f6', color: '#374151' }}>{selectedDocument.ownerId}</span>
-              </div>
-              <h2 style={{ marginTop: 0 }}>{selectedDocument.title}</h2>
-              <p>{selectedDocument.summary}</p>
-              <article style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{selectedDocument.content}</article>
-              <div style={{ marginTop: 16 }}>
-                <strong>Tags:</strong> {selectedDocument.tags.join(', ') || 'none'}
-              </div>
-            </>
-          ) : (
-            <p>No document selected.</p>
-          )}
-        </section>
-      </section>
+      {view === 'documents' ? (
+        <DocumentsView
+          filteredDocuments={filteredDocuments}
+          selectedDocument={selectedDocument}
+          selectedType={selectedType}
+          searchTerm={searchTerm}
+          meta={meta}
+          onSearch={setSearchTerm}
+          onSelectType={setSelectedType}
+          onSelectDocument={setSelectedDocumentId}
+          onEdit={openEditEditor}
+        />
+      ) : null}
+
+      {view === 'editor' ? (
+        <EditorView
+          draft={draft}
+          mode={editorMode}
+          meta={meta}
+          activeDocument={selectedDocument}
+          onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+          onSave={() => void handleSaveDraft()}
+        />
+      ) : null}
     </main>
   );
 }
