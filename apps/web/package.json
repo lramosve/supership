@@ -1,0 +1,31 @@
+{
+  "name": "@supership/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --environment jsdom",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "clean": "if exist dist rmdir /s /q dist"
+  },
+  "dependencies": {
+    "@supership/shared": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.3",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^27.4.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^4.0.16"
+  }
+}

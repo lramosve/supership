@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node"]
+  },
+  "references": [{ "path": "../../packages/shared" }],
+  "include": ["src", "vite.config.ts"]
+}
