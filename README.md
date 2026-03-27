@@ -21,6 +21,35 @@ SuperShip preserves the unified document model:
 
 This is the central architectural concept inherited from Ship and must remain true throughout the rebuild.
 
-## Phase 1 status
+## Current phase status
 
-Phase 1 captures source audit findings from the Fleetgraph codebase and documents the rebuild direction before implementation begins.
+- Phase 1: audit and bootstrap complete
+- Phase 2: architecture and scaffolding complete
+- Phase 3: core backend complete
+- Phase 4: core frontend complete
+- Phase 5: parity findings, traceability, and chat complete
+- Phase 6: verification and release readiness complete
+
+## Workspace commands
+
+- `pnpm test`
+- `pnpm build`
+- `pnpm verify:release`
+- `pnpm dev`
+- `pnpm dev:api`
+- `pnpm dev:web`
+
+## Demo flow
+
+- start the API and web app
+- explore the dashboard and documents shell
+- create or edit a document
+- open the parity console for findings, traceability, and chat
+- run release verification to prove the live API path
+
+## Release-readiness docs
+
+- `docs/parity-matrix.md`
+- `docs/release-readiness.md`
+- `docs/architecture.md`
+- `docs/audit/phase-1-plan.md`

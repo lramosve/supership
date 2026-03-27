@@ -16,6 +16,7 @@
     "type-check": "pnpm --recursive run type-check",
     "test": "pnpm --recursive run test",
     "lint": "pnpm --recursive run lint",
+    "verify:release": "node scripts/verify-release.mjs",
     "clean": "pnpm --recursive run clean"
   },
   "devDependencies": {
