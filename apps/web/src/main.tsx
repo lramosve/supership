@@ -1,24 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
+  createChatMessageInputSchema,
   createDocumentInputSchema,
+  documentChatResponseSchema,
+  documentFindingsResponseSchema,
+  documentListResponseSchema,
   documentMetaResponseSchema,
   documentSchema,
-  documentListResponseSchema,
   documentStatusSchema,
+  documentTraceResponseSchema,
   documentTypeSchema,
+  seededChatMessages,
   seededDocuments,
+  seededFindings,
+  seededTraceEvents,
   updateDocumentInputSchema,
+  type ChatMessage,
   type CreateDocumentInput,
   type Document,
   type DocumentMetaResponse,
   type DocumentStatus,
   type DocumentType,
+  type Finding,
+  type TraceEvent,
   type UpdateDocumentInput,
 } from '@supership/shared';
 
 type AsyncState = 'idle' | 'loading' | 'ready' | 'error';
-type AppView = 'dashboard' | 'documents' | 'editor';
+type AppView = 'dashboard' | 'documents' | 'editor' | 'parity';
 type EditorMode = 'create' | 'edit';
 
 type EditorDraft = {
@@ -131,6 +141,26 @@ function updateLocalDocument(existing: Document, payload: UpdateDocumentInput): 
   });
 }
 
+function createLocalParityReply(documentId: string, prompt: string, existingMessages: ChatMessage[]): ChatMessage[] {
+  const timestamp = new Date().toISOString();
+  return [
+    {
+      id: `local-user-${existingMessages.length + 1}`,
+      documentId,
+      role: 'user',
+      content: prompt,
+      createdAt: timestamp,
+    },
+    {
+      id: `local-assistant-${existingMessages.length + 2}`,
+      documentId,
+      role: 'assistant',
+      content: 'Local parity assistant: review open findings, recent trace events, and the current document summary before choosing the next action.',
+      createdAt: new Date(Date.now() + 1000).toISOString(),
+    },
+  ];
+}
+
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div style={{ padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220, background: '#ffffff' }}>
@@ -158,11 +188,12 @@ function NavigationTab({ label, active, onClick }: { label: string; active: bool
   );
 }
 
-function DashboardView({ documents, state, onOpenDocuments, onOpenCreate }: {
+function DashboardView({ documents, state, onOpenDocuments, onOpenCreate, onOpenParity }: {
   documents: Document[];
   state: AsyncState;
   onOpenDocuments: () => void;
   onOpenCreate: () => void;
+  onOpenParity: () => void;
 }) {
   const byType = documents.reduce<Record<string, number>>((accumulator, document) => {
     accumulator[document.type] = (accumulator[document.type] ?? 0) + 1;
@@ -193,13 +224,16 @@ function DashboardView({ documents, state, onOpenDocuments, onOpenCreate }: {
 
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
           <h2 style={{ marginTop: 0 }}>Focused actions</h2>
-          <p>The core frontend now supports a routed shell, filtered document explorer, and document editor.</p>
+          <p>The core frontend now supports a routed shell, filtered document explorer, parity console, and document editor.</p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <button onClick={onOpenDocuments} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }}>
               Explore documents
             </button>
             <button onClick={onOpenCreate} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#ffffff', color: '#111827' }}>
               Draft a document
+            </button>
+            <button onClick={onOpenParity} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#ffffff', color: '#111827' }}>
+              Open parity console
             </button>
           </div>
         </div>
@@ -376,6 +410,75 @@ function EditorView({
   );
 }
 
+function ParityView({
+  document,
+  findings,
+  traceEvents,
+  chatMessages,
+  chatDraft,
+  onChatDraftChange,
+  onSendChat,
+}: {
+  document?: Document;
+  findings: Finding[];
+  traceEvents: TraceEvent[];
+  chatMessages: ChatMessage[];
+  chatDraft: string;
+  onChatDraftChange: (value: string) => void;
+  onSendChat: () => void;
+}) {
+  return (
+    <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+        <h2 style={{ marginTop: 0 }}>Parity console</h2>
+        <p>Selected document: <strong>{document?.title ?? 'none'}</strong></p>
+        <h3>Proactive findings</h3>
+        <ul style={{ paddingLeft: 18 }}>
+          {findings.map((finding) => (
+            <li key={finding.id}>
+              <strong>{finding.title}</strong> — {finding.severity} / {finding.status}<br />
+              <span>{finding.summary}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+        <h3 style={{ marginTop: 0 }}>Trace timeline</h3>
+        <ul style={{ paddingLeft: 18 }}>
+          {traceEvents.map((event) => (
+            <li key={event.id}>
+              <strong>{event.kind}</strong> — {event.summary}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div style={{ gridColumn: '1 / span 2', border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }}>
+        <h3 style={{ marginTop: 0 }}>On-demand chat</h3>
+        <div style={{ display: 'grid', gap: 12, marginBottom: 16 }}>
+          {chatMessages.map((message) => (
+            <div key={message.id} style={{ padding: 12, borderRadius: 12, background: message.role === 'assistant' ? '#eff6ff' : '#f3f4f6' }}>
+              <strong>{message.role}</strong>
+              <div>{message.content}</div>
+            </div>
+          ))}
+        </div>
+        <textarea
+          aria-label="Parity chat prompt"
+          value={chatDraft}
+          onChange={(event) => onChatDraftChange(event.target.value)}
+          rows={4}
+          style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #d1d5db', resize: 'vertical', marginBottom: 12 }}
+        />
+        <button onClick={onSendChat} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }}>
+          Ask parity assistant
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function DocumentApp() {
   const [documents, setDocuments] = useState<Document[]>(seededDocuments);
   const [meta, setMeta] = useState<DocumentMetaResponse>({
@@ -390,6 +493,10 @@ export function DocumentApp() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editorMode, setEditorMode] = useState<EditorMode>('create');
   const [draft, setDraft] = useState<EditorDraft>(defaultEditorDraft);
+  const [findings, setFindings] = useState<Finding[]>(seededFindings.filter((finding) => finding.documentId === selectedDocumentId));
+  const [traceEvents, setTraceEvents] = useState<TraceEvent[]>(seededTraceEvents.filter((event) => event.documentId === selectedDocumentId));
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(seededChatMessages.filter((message) => message.documentId === selectedDocumentId));
+  const [chatDraft, setChatDraft] = useState('What is the next priority here?');
 
   useEffect(() => {
     async function load() {
@@ -434,6 +541,32 @@ export function DocumentApp() {
       setSelectedDocumentId(selectedDocument.id);
     }
   }, [selectedDocument, selectedDocumentId]);
+
+  useEffect(() => {
+    if (!selectedDocumentId) {
+      return;
+    }
+
+    async function loadParity() {
+      try {
+        const [findingsResponse, traceResponse, chatResponse] = await Promise.all([
+          fetchJson(`/api/documents/${selectedDocumentId}/findings`, undefined, documentFindingsResponseSchema),
+          fetchJson(`/api/documents/${selectedDocumentId}/trace`, undefined, documentTraceResponseSchema),
+          fetchJson(`/api/documents/${selectedDocumentId}/chat`, undefined, documentChatResponseSchema),
+        ]);
+
+        setFindings(findingsResponse.findings);
+        setTraceEvents(traceResponse.events);
+        setChatMessages(chatResponse.messages);
+      } catch {
+        setFindings(seededFindings.filter((finding) => finding.documentId === selectedDocumentId));
+        setTraceEvents(seededTraceEvents.filter((event) => event.documentId === selectedDocumentId));
+        setChatMessages(seededChatMessages.filter((message) => message.documentId === selectedDocumentId));
+      }
+    }
+
+    void loadParity();
+  }, [selectedDocumentId]);
 
   function openCreateEditor() {
     setEditorMode('create');
@@ -524,17 +657,47 @@ export function DocumentApp() {
     setView('documents');
   }
 
+  async function handleSendParityChat() {
+    if (!selectedDocument) {
+      return;
+    }
+
+    const payload = createChatMessageInputSchema.parse({
+      documentId: selectedDocument.id,
+      content: chatDraft.trim(),
+    });
+
+    try {
+      const response = await fetchJson(`/api/documents/${selectedDocument.id}/chat`, {
+        method: 'POST',
+        body: JSON.stringify({ content: payload.content }),
+      }, documentChatResponseSchema);
+
+      setChatMessages((current) => [...current, ...response.messages]);
+      setMessage(`Parity assistant responded for “${selectedDocument.title}”.`);
+      setState('ready');
+    } catch {
+      const fallback = createLocalParityReply(selectedDocument.id, payload.content, chatMessages);
+      setChatMessages((current) => [...current, ...fallback]);
+      setMessage(`API unavailable. Added local parity response for “${selectedDocument.title}”.`);
+      setState('error');
+    }
+
+    setChatDraft('');
+  }
+
   return (
     <main style={{ fontFamily: 'Inter, sans-serif', padding: 24, color: '#111827', background: '#f9fafb', minHeight: '100vh' }}>
       <header style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 8 }}>SuperShip core frontend</h1>
-        <p style={{ margin: 0 }}>Phase 4 expands the document workspace into a routed shell with dashboard, explorer, and editor experiences.</p>
+        <h1 style={{ marginBottom: 8 }}>SuperShip parity workspace</h1>
+        <p style={{ margin: 0 }}>Phase 5 adds proactive findings, traceability, and on-demand parity chat on top of the unified document model.</p>
       </header>
 
       <nav style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <NavigationTab label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
         <NavigationTab label="Documents" active={view === 'documents'} onClick={() => setView('documents')} />
         <NavigationTab label="Editor" active={view === 'editor'} onClick={() => setView('editor')} />
+        <NavigationTab label="Parity" active={view === 'parity'} onClick={() => setView('parity')} />
         <button onClick={() => void handleCreateSeedDocument()} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff', marginLeft: 'auto' }}>
           Create seed document
         </button>
@@ -550,6 +713,7 @@ export function DocumentApp() {
           state={state}
           onOpenDocuments={() => setView('documents')}
           onOpenCreate={openCreateEditor}
+          onOpenParity={() => setView('parity')}
         />
       ) : null}
 
@@ -575,6 +739,18 @@ export function DocumentApp() {
           activeDocument={selectedDocument}
           onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
           onSave={() => void handleSaveDraft()}
+        />
+      ) : null}
+
+      {view === 'parity' ? (
+        <ParityView
+          document={selectedDocument}
+          findings={findings}
+          traceEvents={traceEvents}
+          chatMessages={chatMessages}
+          chatDraft={chatDraft}
+          onChatDraftChange={setChatDraft}
+          onSendChat={() => void handleSendParityChat()}
         />
       ) : null}
     </main>

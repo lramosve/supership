@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { createDocumentInputSchema, documentMetaResponseSchema, documentSchema, documentListResponseSchema, documentStatusSchema, documentTypeSchema, seededDocuments, updateDocumentInputSchema, } from '@supership/shared';
+import { createChatMessageInputSchema, createDocumentInputSchema, documentChatResponseSchema, documentFindingsResponseSchema, documentListResponseSchema, documentMetaResponseSchema, documentSchema, documentStatusSchema, documentTraceResponseSchema, documentTypeSchema, seededChatMessages, seededDocuments, seededFindings, seededTraceEvents, updateDocumentInputSchema, } from '@supership/shared';
 const apiBaseUrl = globalThis.__SUPERSHIP_API_BASE_URL__ ?? 'http://localhost:3000';
 const defaultEditorDraft = {
     type: 'wiki',
@@ -90,6 +90,25 @@ function updateLocalDocument(existing, payload) {
         updatedAt: new Date().toISOString(),
     });
 }
+function createLocalParityReply(documentId, prompt, existingMessages) {
+    const timestamp = new Date().toISOString();
+    return [
+        {
+            id: `local-user-${existingMessages.length + 1}`,
+            documentId,
+            role: 'user',
+            content: prompt,
+            createdAt: timestamp,
+        },
+        {
+            id: `local-assistant-${existingMessages.length + 2}`,
+            documentId,
+            role: 'assistant',
+            content: 'Local parity assistant: review open findings, recent trace events, and the current document summary before choosing the next action.',
+            createdAt: new Date(Date.now() + 1000).toISOString(),
+        },
+    ];
+}
 function MetricCard({ label, value }) {
     return (_jsxs("div", { style: { padding: 12, border: '1px solid #d1d5db', borderRadius: 12, minWidth: 220, background: '#ffffff' }, children: [_jsx("strong", { children: value }), _jsx("div", { children: label })] }));
 }
@@ -103,14 +122,14 @@ function NavigationTab({ label, active, onClick }) {
             cursor: 'pointer',
         }, children: label }));
 }
-function DashboardView({ documents, state, onOpenDocuments, onOpenCreate }) {
+function DashboardView({ documents, state, onOpenDocuments, onOpenCreate, onOpenParity }) {
     const byType = documents.reduce((accumulator, document) => {
         accumulator[document.type] = (accumulator[document.type] ?? 0) + 1;
         return accumulator;
     }, {});
     const activeCount = documents.filter((document) => document.status === 'active').length;
     const draftCount = documents.filter((document) => document.status === 'draft').length;
-    return (_jsxs("section", { children: [_jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx(MetricCard, { label: "documents visible", value: documents.length }), _jsx(MetricCard, { label: "active documents", value: activeCount }), _jsx(MetricCard, { label: "draft documents", value: draftCount }), _jsx(MetricCard, { label: "workspace state", value: state })] }), _jsxs("section", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }, children: [_jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Portfolio mix" }), _jsx("ul", { style: { margin: 0, paddingLeft: 18 }, children: Object.entries(byType).map(([type, count]) => (_jsxs("li", { children: [type, ": ", count] }, type))) })] }), _jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Focused actions" }), _jsx("p", { children: "The core frontend now supports a routed shell, filtered document explorer, and document editor." }), _jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap' }, children: [_jsx("button", { onClick: onOpenDocuments, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: "Explore documents" }), _jsx("button", { onClick: onOpenCreate, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#ffffff', color: '#111827' }, children: "Draft a document" })] })] })] })] }));
+    return (_jsxs("section", { children: [_jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx(MetricCard, { label: "documents visible", value: documents.length }), _jsx(MetricCard, { label: "active documents", value: activeCount }), _jsx(MetricCard, { label: "draft documents", value: draftCount }), _jsx(MetricCard, { label: "workspace state", value: state })] }), _jsxs("section", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }, children: [_jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Portfolio mix" }), _jsx("ul", { style: { margin: 0, paddingLeft: 18 }, children: Object.entries(byType).map(([type, count]) => (_jsxs("li", { children: [type, ": ", count] }, type))) })] }), _jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Focused actions" }), _jsx("p", { children: "The core frontend now supports a routed shell, filtered document explorer, parity console, and document editor." }), _jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap' }, children: [_jsx("button", { onClick: onOpenDocuments, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: "Explore documents" }), _jsx("button", { onClick: onOpenCreate, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#ffffff', color: '#111827' }, children: "Draft a document" }), _jsx("button", { onClick: onOpenParity, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#ffffff', color: '#111827' }, children: "Open parity console" })] })] })] })] }));
 }
 function DocumentsView({ filteredDocuments, selectedDocument, selectedType, searchTerm, meta, onSearch, onSelectType, onSelectDocument, onEdit, }) {
     return (_jsxs("section", { children: [_jsxs("div", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx("input", { "aria-label": "Search documents", value: searchTerm, onChange: (event) => onSearch(event.target.value), placeholder: "Search by title, summary, or tag", style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db', minWidth: 280 } }), _jsxs("select", { "aria-label": "Filter by document type", value: selectedType, onChange: (event) => onSelectType(event.target.value), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db', minWidth: 220 }, children: [_jsx("option", { value: "all", children: "All document types" }), meta.documentTypes.map((type) => (_jsx("option", { value: type, children: type }, type)))] })] }), _jsxs("section", { style: { display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }, children: [_jsxs("aside", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Document list" }), _jsxs("p", { style: { color: '#6b7280' }, children: [filteredDocuments.length, " matching documents"] }), _jsx("ul", { style: { listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }, children: filteredDocuments.map((document) => (_jsx("li", { children: _jsxs("button", { onClick: () => onSelectDocument(document.id), style: {
@@ -126,6 +145,9 @@ function DocumentsView({ filteredDocuments, selectedDocument, selectedType, sear
 function EditorView({ draft, mode, meta, activeDocument, onChange, onSave, }) {
     return (_jsxs("section", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: mode === 'create' ? 'Create document' : `Edit ${activeDocument?.title ?? 'document'}` }), _jsxs("div", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }, children: [_jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Title" }), _jsx("input", { "aria-label": "Document title", value: draft.title, onChange: (event) => onChange({ title: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Owner" }), _jsx("input", { "aria-label": "Document owner", value: draft.ownerId, onChange: (event) => onChange({ ownerId: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Type" }), _jsx("select", { "aria-label": "Document type", value: draft.type, onChange: (event) => onChange({ type: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }, children: meta.documentTypes.map((type) => (_jsx("option", { value: type, children: type }, type))) })] }), _jsxs("label", { style: { display: 'grid', gap: 6 }, children: [_jsx("span", { children: "Status" }), _jsx("select", { "aria-label": "Document status", value: draft.status, onChange: (event) => onChange({ status: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' }, children: meta.documentStatuses.map((status) => (_jsx("option", { value: status, children: status }, status))) })] })] }), _jsxs("label", { style: { display: 'grid', gap: 6, marginBottom: 16 }, children: [_jsx("span", { children: "Summary" }), _jsx("input", { "aria-label": "Document summary", value: draft.summary, onChange: (event) => onChange({ summary: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6, marginBottom: 16 }, children: [_jsx("span", { children: "Tags" }), _jsx("input", { "aria-label": "Document tags", value: draft.tags, onChange: (event) => onChange({ tags: event.target.value }), style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db' } })] }), _jsxs("label", { style: { display: 'grid', gap: 6, marginBottom: 16 }, children: [_jsx("span", { children: "Content" }), _jsx("textarea", { "aria-label": "Document content", value: draft.content, onChange: (event) => onChange({ content: event.target.value }), rows: 10, style: { padding: 10, borderRadius: 10, border: '1px solid #d1d5db', resize: 'vertical' } })] }), _jsx("button", { onClick: onSave, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: mode === 'create' ? 'Save new document' : 'Save document changes' })] }));
 }
+function ParityView({ document, findings, traceEvents, chatMessages, chatDraft, onChatDraftChange, onSendChat, }) {
+    return (_jsxs("section", { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }, children: [_jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h2", { style: { marginTop: 0 }, children: "Parity console" }), _jsxs("p", { children: ["Selected document: ", _jsx("strong", { children: document?.title ?? 'none' })] }), _jsx("h3", { children: "Proactive findings" }), _jsx("ul", { style: { paddingLeft: 18 }, children: findings.map((finding) => (_jsxs("li", { children: [_jsx("strong", { children: finding.title }), " \u2014 ", finding.severity, " / ", finding.status, _jsx("br", {}), _jsx("span", { children: finding.summary })] }, finding.id))) })] }), _jsxs("div", { style: { border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h3", { style: { marginTop: 0 }, children: "Trace timeline" }), _jsx("ul", { style: { paddingLeft: 18 }, children: traceEvents.map((event) => (_jsxs("li", { children: [_jsx("strong", { children: event.kind }), " \u2014 ", event.summary] }, event.id))) })] }), _jsxs("div", { style: { gridColumn: '1 / span 2', border: '1px solid #e5e7eb', borderRadius: 16, padding: 16, background: '#ffffff' }, children: [_jsx("h3", { style: { marginTop: 0 }, children: "On-demand chat" }), _jsx("div", { style: { display: 'grid', gap: 12, marginBottom: 16 }, children: chatMessages.map((message) => (_jsxs("div", { style: { padding: 12, borderRadius: 12, background: message.role === 'assistant' ? '#eff6ff' : '#f3f4f6' }, children: [_jsx("strong", { children: message.role }), _jsx("div", { children: message.content })] }, message.id))) }), _jsx("textarea", { "aria-label": "Parity chat prompt", value: chatDraft, onChange: (event) => onChatDraftChange(event.target.value), rows: 4, style: { width: '100%', padding: 10, borderRadius: 10, border: '1px solid #d1d5db', resize: 'vertical', marginBottom: 12 } }), _jsx("button", { onClick: onSendChat, style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff' }, children: "Ask parity assistant" })] })] }));
+}
 export function DocumentApp() {
     const [documents, setDocuments] = useState(seededDocuments);
     const [meta, setMeta] = useState({
@@ -140,6 +162,10 @@ export function DocumentApp() {
     const [searchTerm, setSearchTerm] = useState('');
     const [editorMode, setEditorMode] = useState('create');
     const [draft, setDraft] = useState(defaultEditorDraft);
+    const [findings, setFindings] = useState(seededFindings.filter((finding) => finding.documentId === selectedDocumentId));
+    const [traceEvents, setTraceEvents] = useState(seededTraceEvents.filter((event) => event.documentId === selectedDocumentId));
+    const [chatMessages, setChatMessages] = useState(seededChatMessages.filter((message) => message.documentId === selectedDocumentId));
+    const [chatDraft, setChatDraft] = useState('What is the next priority here?');
     useEffect(() => {
         async function load() {
             setState('loading');
@@ -176,6 +202,29 @@ export function DocumentApp() {
             setSelectedDocumentId(selectedDocument.id);
         }
     }, [selectedDocument, selectedDocumentId]);
+    useEffect(() => {
+        if (!selectedDocumentId) {
+            return;
+        }
+        async function loadParity() {
+            try {
+                const [findingsResponse, traceResponse, chatResponse] = await Promise.all([
+                    fetchJson(`/api/documents/${selectedDocumentId}/findings`, undefined, documentFindingsResponseSchema),
+                    fetchJson(`/api/documents/${selectedDocumentId}/trace`, undefined, documentTraceResponseSchema),
+                    fetchJson(`/api/documents/${selectedDocumentId}/chat`, undefined, documentChatResponseSchema),
+                ]);
+                setFindings(findingsResponse.findings);
+                setTraceEvents(traceResponse.events);
+                setChatMessages(chatResponse.messages);
+            }
+            catch {
+                setFindings(seededFindings.filter((finding) => finding.documentId === selectedDocumentId));
+                setTraceEvents(seededTraceEvents.filter((event) => event.documentId === selectedDocumentId));
+                setChatMessages(seededChatMessages.filter((message) => message.documentId === selectedDocumentId));
+            }
+        }
+        void loadParity();
+    }, [selectedDocumentId]);
     function openCreateEditor() {
         setEditorMode('create');
         setDraft(defaultEditorDraft);
@@ -254,7 +303,32 @@ export function DocumentApp() {
         }
         setView('documents');
     }
-    return (_jsxs("main", { style: { fontFamily: 'Inter, sans-serif', padding: 24, color: '#111827', background: '#f9fafb', minHeight: '100vh' }, children: [_jsxs("header", { style: { marginBottom: 24 }, children: [_jsx("h1", { style: { marginBottom: 8 }, children: "SuperShip core frontend" }), _jsx("p", { style: { margin: 0 }, children: "Phase 4 expands the document workspace into a routed shell with dashboard, explorer, and editor experiences." })] }), _jsxs("nav", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx(NavigationTab, { label: "Dashboard", active: view === 'dashboard', onClick: () => setView('dashboard') }), _jsx(NavigationTab, { label: "Documents", active: view === 'documents', onClick: () => setView('documents') }), _jsx(NavigationTab, { label: "Editor", active: view === 'editor', onClick: () => setView('editor') }), _jsx("button", { onClick: () => void handleCreateSeedDocument(), style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff', marginLeft: 'auto' }, children: "Create seed document" })] }), _jsx("section", { style: { marginBottom: 16 }, children: _jsx("p", { children: message }) }), view === 'dashboard' ? (_jsx(DashboardView, { documents: documents, state: state, onOpenDocuments: () => setView('documents'), onOpenCreate: openCreateEditor })) : null, view === 'documents' ? (_jsx(DocumentsView, { filteredDocuments: filteredDocuments, selectedDocument: selectedDocument, selectedType: selectedType, searchTerm: searchTerm, meta: meta, onSearch: setSearchTerm, onSelectType: setSelectedType, onSelectDocument: setSelectedDocumentId, onEdit: openEditEditor })) : null, view === 'editor' ? (_jsx(EditorView, { draft: draft, mode: editorMode, meta: meta, activeDocument: selectedDocument, onChange: (patch) => setDraft((current) => ({ ...current, ...patch })), onSave: () => void handleSaveDraft() })) : null] }));
+    async function handleSendParityChat() {
+        if (!selectedDocument) {
+            return;
+        }
+        const payload = createChatMessageInputSchema.parse({
+            documentId: selectedDocument.id,
+            content: chatDraft.trim(),
+        });
+        try {
+            const response = await fetchJson(`/api/documents/${selectedDocument.id}/chat`, {
+                method: 'POST',
+                body: JSON.stringify({ content: payload.content }),
+            }, documentChatResponseSchema);
+            setChatMessages((current) => [...current, ...response.messages]);
+            setMessage(`Parity assistant responded for “${selectedDocument.title}”.`);
+            setState('ready');
+        }
+        catch {
+            const fallback = createLocalParityReply(selectedDocument.id, payload.content, chatMessages);
+            setChatMessages((current) => [...current, ...fallback]);
+            setMessage(`API unavailable. Added local parity response for “${selectedDocument.title}”.`);
+            setState('error');
+        }
+        setChatDraft('');
+    }
+    return (_jsxs("main", { style: { fontFamily: 'Inter, sans-serif', padding: 24, color: '#111827', background: '#f9fafb', minHeight: '100vh' }, children: [_jsxs("header", { style: { marginBottom: 24 }, children: [_jsx("h1", { style: { marginBottom: 8 }, children: "SuperShip parity workspace" }), _jsx("p", { style: { margin: 0 }, children: "Phase 5 adds proactive findings, traceability, and on-demand parity chat on top of the unified document model." })] }), _jsxs("nav", { style: { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }, children: [_jsx(NavigationTab, { label: "Dashboard", active: view === 'dashboard', onClick: () => setView('dashboard') }), _jsx(NavigationTab, { label: "Documents", active: view === 'documents', onClick: () => setView('documents') }), _jsx(NavigationTab, { label: "Editor", active: view === 'editor', onClick: () => setView('editor') }), _jsx(NavigationTab, { label: "Parity", active: view === 'parity', onClick: () => setView('parity') }), _jsx("button", { onClick: () => void handleCreateSeedDocument(), style: { padding: '10px 14px', borderRadius: 10, border: '1px solid #111827', background: '#111827', color: '#ffffff', marginLeft: 'auto' }, children: "Create seed document" })] }), _jsx("section", { style: { marginBottom: 16 }, children: _jsx("p", { children: message }) }), view === 'dashboard' ? (_jsx(DashboardView, { documents: documents, state: state, onOpenDocuments: () => setView('documents'), onOpenCreate: openCreateEditor, onOpenParity: () => setView('parity') })) : null, view === 'documents' ? (_jsx(DocumentsView, { filteredDocuments: filteredDocuments, selectedDocument: selectedDocument, selectedType: selectedType, searchTerm: searchTerm, meta: meta, onSearch: setSearchTerm, onSelectType: setSelectedType, onSelectDocument: setSelectedDocumentId, onEdit: openEditEditor })) : null, view === 'editor' ? (_jsx(EditorView, { draft: draft, mode: editorMode, meta: meta, activeDocument: selectedDocument, onChange: (patch) => setDraft((current) => ({ ...current, ...patch })), onSave: () => void handleSaveDraft() })) : null, view === 'parity' ? (_jsx(ParityView, { document: selectedDocument, findings: findings, traceEvents: traceEvents, chatMessages: chatMessages, chatDraft: chatDraft, onChatDraftChange: setChatDraft, onSendChat: () => void handleSendParityChat() })) : null] }));
 }
 if (typeof document !== 'undefined') {
     const rootElement = document.getElementById('root');

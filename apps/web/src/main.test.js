@@ -1,6 +1,6 @@
 import { jsx as _jsx } from "react/jsx-runtime";
+import { act } from 'react';
 import ReactDOM from 'react-dom/client';
-import { act } from 'react-dom/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentApp } from './main';
 const originalFetch = global.fetch;
@@ -37,12 +37,12 @@ async function setInputValue(selector, value) {
         element.dispatchEvent(new Event(element.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
     });
 }
-describe('web core frontend', () => {
+describe('web parity workspace', () => {
     it('renders the dashboard shell when the api is unavailable', async () => {
         global.fetch = vi.fn().mockRejectedValue(new Error('offline'));
         await renderApp();
         await vi.waitFor(() => {
-            expect(document.body.textContent).toContain('SuperShip core frontend');
+            expect(document.body.textContent).toContain('SuperShip parity workspace');
             expect(document.body.textContent).toContain('Portfolio mix');
             expect(document.body.textContent).toContain('API unavailable');
         });
@@ -89,6 +89,22 @@ describe('web core frontend', () => {
         await vi.waitFor(() => {
             expect(document.body.textContent).toContain('Frontend-edited note');
             expect(document.body.textContent).toContain('Saved local edits');
+        });
+    });
+    it('shows parity findings and generates a local parity chat response', async () => {
+        global.fetch = vi.fn().mockRejectedValue(new Error('offline'));
+        await renderApp();
+        await clickByText('Parity');
+        await vi.waitFor(() => {
+            expect(document.body.textContent).toContain('Parity console');
+            expect(document.body.textContent).toContain('Program coordination risk');
+            expect(document.body.textContent).toContain('Trace timeline');
+        });
+        await setInputValue('textarea[aria-label="Parity chat prompt"]', 'What is the next highest-risk action?');
+        await clickByText('Ask parity assistant');
+        await vi.waitFor(() => {
+            expect(document.body.textContent).toContain('Local parity assistant');
+            expect(document.body.textContent).toContain('Added local parity response');
         });
     });
 });

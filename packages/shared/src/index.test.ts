@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chatMessageSchema,
+  createChatMessageInputSchema,
   createDocumentInputSchema,
   documentSchema,
   documentTypeSchema,
+  findingSchema,
+  seededChatMessages,
   seededDocuments,
+  seededFindings,
+  seededTraceEvents,
   superShipPrinciples,
+  traceEventSchema,
   updateDocumentInputSchema,
 } from './index';
 
@@ -39,5 +46,18 @@ describe('shared model primitives', () => {
     expect(createDocumentInputSchema.parse(createPayload).title).toBe('Architecture notes');
     expect(() => updateDocumentInputSchema.parse({})).toThrow();
     expect(updateDocumentInputSchema.parse({ title: 'Updated title' }).title).toBe('Updated title');
+  });
+
+  it('validates seeded findings, trace events, and chat messages', () => {
+    expect(seededFindings).toHaveLength(3);
+    expect(seededTraceEvents.length).toBeGreaterThan(0);
+    expect(seededChatMessages.length).toBeGreaterThan(0);
+    expect(() => seededFindings.forEach((finding) => findingSchema.parse(finding))).not.toThrow();
+    expect(() => seededTraceEvents.forEach((event) => traceEventSchema.parse(event))).not.toThrow();
+    expect(() => seededChatMessages.forEach((message) => chatMessageSchema.parse(message))).not.toThrow();
+  });
+
+  it('accepts chat prompts for parity assistance', () => {
+    expect(createChatMessageInputSchema.parse({ documentId: 'doc-program-alpha', content: 'Summarize the risk.' }).content).toBe('Summarize the risk.');
   });
 });

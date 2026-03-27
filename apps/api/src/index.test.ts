@@ -1,10 +1,31 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './index';
-import { seededDocuments, type Document } from '@supership/shared';
+import {
+  seededChatMessages,
+  seededDocuments,
+  seededFindings,
+  seededTraceEvents,
+  type ChatMessage,
+  type Document,
+  type Finding,
+  type TraceEvent,
+} from '@supership/shared';
 
 function cloneSeededDocuments(): Document[] {
   return seededDocuments.map((document) => ({ ...document, tags: [...document.tags] }));
+}
+
+function cloneSeededFindings(): Finding[] {
+  return seededFindings.map((finding) => ({ ...finding }));
+}
+
+function cloneSeededTraceEvents(): TraceEvent[] {
+  return seededTraceEvents.map((event) => ({ ...event }));
+}
+
+function cloneSeededChatMessages(): ChatMessage[] {
+  return seededChatMessages.map((message) => ({ ...message }));
 }
 
 describe('api document service', () => {
@@ -14,6 +35,7 @@ describe('api document service', () => {
     expect(response.status).toBe(200);
     expect(response.body.concept).toBe('everything-is-a-document');
     expect(response.body.repository).toBe('in-memory-documents');
+    expect(response.body.parity).toBe('findings-trace-chat');
   });
 
   it('lists seeded documents and metadata', async () => {
@@ -51,6 +73,11 @@ describe('api document service', () => {
             }
           : undefined;
       },
+    }, {
+      listFindings: () => cloneSeededFindings(),
+      listTraceEvents: () => cloneSeededTraceEvents(),
+      listChatMessages: () => cloneSeededChatMessages(),
+      createChatMessage: () => cloneSeededChatMessages().slice(0, 2),
     });
 
     const createResponse = await request(app).post('/api/documents').send({
@@ -77,8 +104,34 @@ describe('api document service', () => {
     expect(updateResponse.body.status).toBe('archived');
   });
 
-  it('rejects invalid payloads and unknown documents', async () => {
+  it('serves findings, trace events, and chat exchanges for a document', async () => {
     const app = createApp();
+
+    const findingsResponse = await request(app).get('/api/documents/doc-program-alpha/findings');
+    expect(findingsResponse.status).toBe(200);
+    expect(findingsResponse.body.total).toBeGreaterThan(0);
+    expect(findingsResponse.body.findings[0].severity).toBe('high');
+
+    const traceResponse = await request(app).get('/api/documents/doc-program-alpha/trace');
+    expect(traceResponse.status).toBe(200);
+    expect(traceResponse.body.total).toBeGreaterThan(0);
+    expect(traceResponse.body.events[0].documentId).toBe('doc-program-alpha');
+
+    const chatResponse = await request(app).get('/api/documents/doc-program-alpha/chat');
+    expect(chatResponse.status).toBe(200);
+    expect(chatResponse.body.total).toBeGreaterThan(0);
+    expect(chatResponse.body.messages[0].documentId).toBe('doc-program-alpha');
+  });
+
+  it('creates parity chat messages and rejects invalid payloads', async () => {
+    const app = createApp();
+
+    const createChatResponse = await request(app)
+      .post('/api/documents/doc-program-alpha/chat')
+      .send({ content: 'What is the next risk to address?' });
+    expect(createChatResponse.status).toBe(201);
+    expect(createChatResponse.body.total).toBe(2);
+    expect(createChatResponse.body.messages[1].role).toBe('assistant');
 
     const invalidCreate = await request(app).post('/api/documents').send({ title: 'Incomplete' });
     expect(invalidCreate.status).toBe(400);
@@ -88,5 +141,8 @@ describe('api document service', () => {
 
     const invalidPatch = await request(app).patch('/api/documents/doc-program-alpha').send({});
     expect(invalidPatch.status).toBe(400);
+
+    const invalidChat = await request(app).post('/api/documents/doc-program-alpha/chat').send({ content: '' });
+    expect(invalidChat.status).toBe(400);
   });
 });
