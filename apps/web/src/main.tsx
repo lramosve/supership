@@ -41,7 +41,9 @@ type EditorDraft = {
   tags: string;
 };
 
-const apiBaseUrl = (globalThis as { __SUPERSHIP_API_BASE_URL__?: string }).__SUPERSHIP_API_BASE_URL__ ?? 'http://localhost:3000';
+const runtimeApiBaseUrl = (globalThis as { __SUPERSHIP_API_BASE_URL__?: string }).__SUPERSHIP_API_BASE_URL__;
+const envApiBaseUrl = import.meta.env.VITE_SUPERSHIP_API_BASE_URL as string | undefined;
+const apiBaseUrl = runtimeApiBaseUrl ?? envApiBaseUrl ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
 
 const defaultEditorDraft: EditorDraft = {
   type: 'wiki',

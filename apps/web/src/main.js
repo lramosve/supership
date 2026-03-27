@@ -2,7 +2,9 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createChatMessageInputSchema, createDocumentInputSchema, documentChatResponseSchema, documentFindingsResponseSchema, documentListResponseSchema, documentMetaResponseSchema, documentSchema, documentStatusSchema, documentTraceResponseSchema, documentTypeSchema, seededChatMessages, seededDocuments, seededFindings, seededTraceEvents, updateDocumentInputSchema, } from '@supership/shared';
-const apiBaseUrl = globalThis.__SUPERSHIP_API_BASE_URL__ ?? 'http://localhost:3000';
+const runtimeApiBaseUrl = globalThis.__SUPERSHIP_API_BASE_URL__;
+const envApiBaseUrl = import.meta.env.VITE_SUPERSHIP_API_BASE_URL;
+const apiBaseUrl = runtimeApiBaseUrl ?? envApiBaseUrl ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
 const defaultEditorDraft = {
     type: 'wiki',
     title: '',

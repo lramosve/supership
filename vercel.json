@@ -3,5 +3,8 @@
   "buildCommand": "pnpm --filter @supership/web build",
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "apps/web/dist",
-  "framework": null
+  "framework": null,
+  "env": {
+    "VITE_SUPERSHIP_API_BASE_URL": "https://supership-production.up.railway.app"
+  }
 }
